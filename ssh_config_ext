@@ -1,0 +1,191 @@
+
+Host i6 irix65-mips silicon
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65014
+    ForwardX11 yes
+    HostName silicon.msu.snakebite.net
+    HostKeyAlias silicon.msu.snakebite.net
+
+Host a7 aix71-powerpc arsenic
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65033
+    ForwardX11 yes
+    HostName arsenic.msu.snakebite.net
+    HostKeyAlias arsenic.msu.snakebite.net
+
+Host h3 hpux11iv3-ia64 titanium
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65022
+    ForwardX11 yes
+    HostName titanium.msu.snakebite.net
+    HostKeyAlias titanium.msu.snakebite.net
+
+Host s11 solaris11-x64 carbon
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65006
+    ForwardX11 yes
+    HostName carbon.msu.snakebite.net
+    HostKeyAlias carbon.msu.snakebite.net
+
+Host s10 solaris10-sparc nitrogen
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65007
+    ForwardX11 yes
+    HostName nitrogen.msu.snakebite.net
+    HostKeyAlias nitrogen.msu.snakebite.net
+
+Host t5 tru64-51-alpha boron
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65005
+    ForwardX11 yes
+    HostName boron.msu.snakebite.net
+    HostKeyAlias boron.msu.snakebite.net
+
+Host h2 hpux11iv2-parisc oxygen
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65008
+    ForwardX11 yes
+    HostName oxygen.msu.snakebite.net
+    HostKeyAlias oxygen.msu.snakebite.net
+
+Host s9 solaris9-sparc fluorine
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    Port 65009
+    ForwardX11 yes
+    HostName fluorine.msu.snakebite.net
+    HostKeyAlias fluorine.msu.snakebite.net
+
+Host sbctl
+    Port 64979
+    HostName sbctl.msu.snakebite.net
+    HostKeyAlias sbctl.msu.snakebite.net
+    User sbctl
+

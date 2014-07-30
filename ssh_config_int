@@ -1,0 +1,183 @@
+
+Host i6 irix65-mips silicon
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName silicon.snakebite.net
+    HostKeyAlias silicon.snakebite.net
+
+Host a7 aix71-powerpc arsenic
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName arsenic.snakebite.net
+    HostKeyAlias arsenic.snakebite.net
+
+Host h3 hpux11iv3-ia64 titanium
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName titanium.snakebite.net
+    HostKeyAlias titanium.snakebite.net
+
+Host s11 solaris11-x64 carbon
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName carbon.snakebite.net
+    HostKeyAlias carbon.snakebite.net
+
+Host s10 solaris10-sparc nitrogen
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName nitrogen.snakebite.net
+    HostKeyAlias nitrogen.snakebite.net
+
+Host t5 tru64-51-alpha boron
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName boron.snakebite.net
+    HostKeyAlias boron.snakebite.net
+
+Host h2 hpux11iv2-parisc oxygen
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName oxygen.snakebite.net
+    HostKeyAlias oxygen.snakebite.net
+
+Host s9 solaris9-sparc fluorine
+    Protocol 2
+    BatchMode yes
+    ForwardX11 no
+    CheckHostIP yes
+    TCPKeepAlive yes
+    ConnectTimeout 30
+    AddressFamily inet
+    VerifyHostKeyDNS yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    PubkeyAuthentication yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PreferredAuthentications publickey
+    ChallengeResponseAuthentication no
+    Compression yes
+    ForwardX11 yes
+    HostName fluorine.snakebite.net
+    HostKeyAlias fluorine.snakebite.net
+
+Host sbctl
+    Port 64979
+    HostName sbctl.snakebite.net
+    HostKeyAlias sbctl.snakebite.net
+    User sbctl
+

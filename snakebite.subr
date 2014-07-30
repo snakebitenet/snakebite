@@ -1,0 +1,1598 @@
+#!/bin/sh
+
+__subr_rev="$(echo '$Rev: 125 $' | awk '{ print $2 }')"
+__args=$*
+
+__force_prepend_path() {
+    PATH=$1:$PATH
+}
+
+__force_prepend_path /usr/xpg4/bin
+__force_prepend_path /usr/xpg6/bin
+
+_d=$(dirname $0)
+if (echo $_d | grep '^\.$' > /dev/null 2>&1); then
+    _d=$(pwd)$(echo $_d | sed -e 's/^\.//')
+fi
+
+_name=$(basename $0)
+
+__timestamp() {
+    local _ts
+    _ts=$(date "+%Y%M%d%H%M%S")
+    if [ -n "$_ts" ]; then
+        echo $_ts
+        return 0
+    fi
+
+    echo "error: failed to generate timestamp via 'date \"+%Y%M%d%H%M%S\"'"
+    exit 1
+}
+__today=$(date "+%Y%m%d")
+if [ -z "$__today" ]; then
+    echo 'error: `date "+%Y%m%d"` failed.'
+    exit 1
+fi
+
+__tempdir="$(mktemp -d /tmp/$_name.XXXXX)"
+__have_mktemp=0
+if [ -d $__tempdir ]; then
+    __have_mktemp=1
+else
+    __tempdir=$_d/.tmp.$(__timestamp)
+    mkdir $__tempdir
+    if [ ! $__tempdir ]; then
+        echo "error: failed to create a temporary directory"
+        exit 1
+    fi
+fi
+
+__mktempfile() {
+    local _f _i
+    _f=""
+    if [ $__have_mktemp -eq 1 ]; then
+        _f=$(mktemp "$__tempdir/t.XXXXXX")
+        if [ ! -f "$_f" ]; then
+            # Have mktemp eh?  I think not.
+            __have_mktemp=0
+        elif [ -s "$_f" ]; then
+            echo "error: temp file $_f already exists!" >&2
+            exit 1
+        else
+            echo $_f
+            return 0
+        fi
+    fi
+
+    if [ -z "$_f" -o ! -f $_f ]; then
+        _i=0
+        while :; do
+            _i=$(( $_i + 1 ))
+            if [ $_i -gt 3 ]; then
+                echo "error: failed to create a unique tempfile after "\
+                     "3 attempts." >&2
+                exit 1
+            fi
+            _f=$__tempdir/t.$(__timestamp)
+            if [ -f $_f ]; then
+                continue
+            fi
+        done
+        echo "" > $_f
+        if [ ! -f $_f ]; then
+            echo "error: no matter how hard I try," \
+                 " I can't create a tempfile." >&2
+            exit 1
+        else
+            echo $_f
+            return 0
+        fi
+    fi
+
+    echo "error: unexpected code path in __mktempfile" >&2
+    exit 1
+}
+
+__cleanup() {
+    rm -rf $__tempdir > /dev/null 2>&1
+}
+
+trap __cleanup EXIT
+
+# subr = "subroutine" (*BSD /etc/rc.* vernacular)
+_subr_name="snakebite.subr"
+_subr="$_d/$_subr_name"
+if [ -z "$_d" -o ! -d "$_d" -o ! -f "$_subr" ]; then
+    echo "error: \$_d not set properly (current value: $_d)"
+    exit 1
+fi
+
+__echo_nolf() {
+    local _e
+    for _e in /bin/echo /usr/bin/echo; do
+        if [ -f $_e ]; then
+            $_e -n "$*"
+            return 0
+        fi
+    done
+    printf "$*\c"
+}
+
+__dot() {
+    __echo_nolf "."
+}
+
+__get_perms() {
+    ls -l $1 | cut -b 1-10
+}
+
+__indent() {
+    sed 's/^/    /'
+}
+
+__random() {
+    if [ ! -f "$(which openssl)" ]; then
+        __timestamp
+    else
+        openssl rand -base64 40 | sed 's/[^a-zA-Z0-9]//g' | cut -c 1-32
+    fi
+}
+
+__list_programs() {
+    cat $_subr | grep "^[a-z]\+() {$" | sed 's/() {$//' | sort
+}
+
+__list_symlinks_to_subr() {
+    local _l _p _t _n _bn
+    ls "$_d/" | while read _n; do
+        _p="$_d/$_n"
+        if [ -L "$_p" ]; then
+            _t=$(readlink $_p)
+            _bn=$(basename $_t)
+            if [ "$_bn" = "$_subr_name" ]; then
+                echo $_p
+            fi
+        fi
+    done
+}
+
+__list_subcommands_for_program() {
+    cat $_subr                      |
+        grep "^$1_[a-z_]\+() {$"    |
+        sed -e 's/() {$//'          \
+            -e "s/^$1_//"           \
+            -e 's/_/-/g'            |
+        sort
+}
+
+__is_valid_program() {
+    if __list_programs | grep "^$1$" > /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+__is_valid_subcommand_for_program() {
+    if (__list_subcommands_for_program $1 | grep "^$2$" > /dev/null 2>&1); then
+        return 0
+    else
+        return 1
+    fi
+}
+
+__validate_program() {
+    if ! __is_valid_program $1; then
+        echo "error: unknown program: $1"
+        echo "supported programs:"
+        __list_programs | __indent
+        return 1
+    else
+        return 0
+    fi
+}
+
+__validate_subcommand_for_program() {
+    __validate_program $1 || return 1
+
+    if ! __is_valid_subcommand_for_program $1 $2; then
+        if [ -n "$2" ]; then
+            echo "error: unknown subcommand: $2"
+        fi
+        echo "available subcommands for $1:"
+        __list_subcommands_for_program $1 $2 | __indent
+        return 1
+    else
+        return 0
+    fi
+}
+
+__list_symlinks_to_subr | while read __s; do
+    __bn=$(basename $__s)
+    if ! __is_valid_program $__bn; then
+        rm $__s
+        if [ -L $__s ]; then
+            echo "error: failed to remove obsolete link: $__s"
+            exit 1
+        fi
+        echo "Removed obsolete link '$(basename $__s)'."
+    fi
+done
+
+__list_programs | while read __p; do
+    if [ ! -L $_d/$__p ]; then
+        ln -sf $_subr $_d/$__p
+        if [ ! -L $_d/$__p ]; then
+            echo "error: failed to create link for '$__p'"
+            exit 1
+        else
+            echo "Created link for '$__p'."
+        fi
+    fi
+done
+
+__fix_perms() {
+    __actual_perms="$(__get_perms $_subr)"
+    __expected_perms="-rwxr-xr-x"
+    if [ "$__actual_perms" != "$__expected_perms" ]; then
+        chmod 755 $_subr
+        __actual_perms="$(__get_perms $_subr)"
+        if [ "$__actual_perms" != "$__expected_perms" ]; then
+            echo "chmod 755 $_subr failed"
+            exit 1
+        else
+            echo "Fixed permissions for $_subr."
+            if [ "$_name" = "$_subr_name" ]; then
+                echo "The following commands can now be executed directly:"
+                __list_programs | __indent
+            fi
+        fi
+    fi
+}
+__fix_perms
+
+__svn_update() {
+    local _info _rinfo _url _repo_rev _wc_rev _out _err _cmd
+
+    _info=$(__mktempfile) || exit 1
+    _rinfo=$(__mktempfile) || exit 1
+    _out=$(__mktempfile) || exit 1
+    _err=$(__mktempfile) || exit 1
+    LC_ALL=C svn info $_d > $_info || exit 1
+    _wc_rev=$(cat $_info | grep '^Rev' | awk '{ print $2 }')
+    _url="$(cat $_info | grep '^URL: ' | awk '{ print $2 }')"
+
+    __echo_nolf "Getting update information..."
+    _cmd="LC_ALL=C svn info $_url"
+    if ! eval $_cmd > $_rinfo 2>$_err; then
+        echo "failed."
+        echo "$_cmd failed:"
+        cat $_err
+        exit 1
+    fi
+    echo "done."
+
+    _repo_rev=$(cat $_rinfo | grep '^Rev' | awk '{ print $2 }')
+    if [ $_wc_rev -eq $_repo_rev ]; then
+        echo "Working copy is up-to-date (r$_repo_rev)."
+        return 0
+    fi
+
+    __echo_nolf "Updating working copy to r$_repo_rev..."
+    _cmd="LC_ALL=C svn update --non-interactive $_d"
+    if ! eval $_cmd >$_out 2>$_err; then
+        echo "failed."
+        echo "$_cmd failed:"
+        cat $_err
+        exit 1
+    else
+        echo "done."
+        echo "Relaunching due to working copy update..."
+        (sh $_subr $*); exit $?
+    fi
+}
+
+__svn_switch_to_https() {
+    local _info _rinfo _http _https _host _url _fp_expected _fp_actual
+    local _repo_rev _wc_rev _out _err _cmd _pems
+
+    if [ -f "$_d/.busted_https" ]; then
+        return 0
+    fi
+
+    _info=$(__mktempfile) || exit 1
+    _out=$(__mktempfile) || exit 1
+    _err=$(__mktempfile) || exit 1
+    _host="svn.snakebite.net"
+    _http="http://$_host"
+    _https="https://$_host"
+    LC_ALL=C svn info $_d > $_info || exit 1
+    _url="$(cat $_info | grep '^URL: ' | awk '{ print $2 }')"
+
+    if echo $_url | grep "$_https" > /dev/null; then
+        return 0
+    fi
+    _url="$(echo $_url | sed 's/^http:/https:/')"
+
+    __echo_nolf "Attempting to switch protocol (http->https) of working copy."
+    _fp_expected="$(cat $_d/wildcard.snakebite.net.fingerprint)"
+    echo r | LC_ALL=C svn ls $_url >$_out 2>$_err
+    __echo_nolf "."
+    _fp_actual="$(cat $_err | grep 'Fingerprint:' | awk '{ print $3 }')"
+    __echo_nolf "."
+    if [ -n "$_fp_actual" -a "$_fp_expected" != "$_fp_actual" ]; then
+        echo ".failed."
+        echo "error: fingerprint mismatch from server" >&2
+        echo "(expected: $_fp_expected, actual: $_fp_actual)" >&2
+        touch $_d/.busted_https
+        exit 1
+    fi
+
+    # (P)ermanently accept the certificate.
+    echo p | LC_ALL=C svn ls $_url >$_out 2>$_err
+    __echo_nolf "."
+
+    # Verify that ls now works without any more prompts.
+    echo r | LC_ALL=C svn ls $_url >$_out 2>$_err
+    __echo_nolf "."
+    if [ -s $_err ]; then
+        echo "failed." >&2
+        echo "LC_ALL=C svn ls $_url generated unexpected stderr:"
+        cat $_err
+        touch $_d/.busted_https
+        return 0
+    fi
+
+    __echo_nolf "."
+    _cmd="LC_ALL=C svn switch --relocate $_http $_https $_d"
+    if ! eval $_cmd >$_out 2>$_err; then
+        echo "failed."
+        echo "$_cmd failed:"
+        cat $_err
+        touch $_d/.busted_https
+        exit 1
+    fi
+    echo "done."
+}
+
+_cmd() {
+    echo $*
+    eval $*
+}
+
+_set_project() {
+    local _p
+    _p=$1
+    if [ -f $_d/.project ]; then
+        echo "Current project: $(cat .project)"
+    fi
+}
+
+__set_project() {
+    local _p _d _a _l _n _f _i
+    _project_name=$1
+    _project_details="$(cat $_d/.projects.details | \
+                        grep \"^$_project_name:\")"
+
+    if [ -z "$_project_details" ]; then
+        echo "error: invalid project name: $_project_name"
+        return 1
+    fi
+
+    _user_login=$(echo $_project_details | cut -f 2 -d ':')
+    _user_firstname=$(echo $_project_details | cut -f 3 -d ':')
+    _user_fullname=$(echo $_project_details | cut -f 4 -d ':')
+
+    echo $_project_name > "$_d/.current_project"
+    echo $_user_login > "$_d/.current_project.login"
+    echo $_user_firstname > "$_d/.current_project.firstname"
+    echo $_user_fullname > "$_d/.current_project.fullname"
+}
+
+__CONNECTION_INITIALIZED=0
+
+__connection_init() {
+    if [ $__CONNECTION_INITIALIZED -eq 1 ]; then
+        return 0
+    fi
+    local _info _url _ctf _r _force_update _is_latest_rev
+    _info=$(__mktempfile) || exit 1
+    _force_update=0
+    _is_latest_rev=0
+    _ctf="$_d/.connection_tested"
+    if [ ! -s "$_ctf" ]; then
+        sbctl_connection_test || return 1
+    fi
+
+    if [ ! -s "$_ctf" ]; then
+        echo "error: invariant violated: $_ctf not initialized after"\
+             " connection test."
+        return 1
+    fi
+
+    _r=$(LC_ALL=C svn info $_d | grep '^Rev' | awk '{ print $2 }')
+    if eval $(__sbctl_ssh_cmd is-latest-rev $_r) |
+         grep '^yes$' > /dev/null
+    then
+        _is_latest_rev=1
+    fi
+
+    # .force_svn_update -> handy for testing.
+    if [ -f "$_d/.force_svn_update" ]; then
+        _force_update=1
+        # Prevent an endless svn-update-relaunch-svn-update-... loop.
+        rm "$_d/.force_svn_update"
+    fi
+
+    if [ $_force_update -eq 1 -o $_is_latest_rev -ne 1 ]; then
+        __svn_update
+    fi
+
+    __svn_switch_to_https
+    __CONNECTION_INITIALIZED=1
+    export __CONNECTION_INITIALIZED
+}
+
+__program_subcommand() {
+    local _c
+    __validate_subcommand_for_program $1 $2 || return 1
+    _c=$1_$(echo $2 | sed 's/-/_/g')
+    shift
+    shift
+    (eval $_c $*); return $?
+}
+
+__svn_cmd() {
+    local _pems
+
+    _pems="$_d/AddTrustExternalCARoot.pem;$_d/PositiveSSLCA2.pem"
+    echo "LC_ALL=C svn --config-option \
+              servers:global:ssl-authority-files=$_pems \
+              --config-option servers:global:ssl-trust-default-ca=yes \
+              --non-interactive"
+}
+
+__ssh_cmd() {
+    local _cf _hf _suffix
+    _suffix="ext"
+    if [ -f $_d/.internal ]; then
+        _suffix="int"
+    fi
+    _hf="-o \"UserKnownHostsFile $_d/ssh_known_hosts_$_suffix\""
+    _cf="-F $_d/ssh_config_$_suffix"
+    # use /usr/bin/env to avoid autossh aliases
+    echo "/usr/bin/env ssh $_cf $_hf"
+}
+
+__sb_ssh_cmd() {
+    echo "$(__ssh_cmd) -l $(__project_name) $*"
+}
+
+__sbctl_ssh_cmd() {
+    echo "$(__ssh_cmd) sbctl $*"
+}
+
+__ssh() {
+    local _t
+    _t=$1
+    shift
+    echo $(eval "__${_t}_ssh_cmd $*")
+    return 0
+}
+
+__sbctl_ssh() {
+    __ssh sbctl $*
+}
+
+__sbctl_ssh_with_creds() {
+    local _c
+    _c=$1
+    shift
+    __ssh sbctl $_c $(__project_name) $(__project_user_login) $*
+}
+
+__sb_ssh() {
+    __ssh sb $*
+}
+
+#=============================================================================
+# GPG stuff
+#=============================================================================
+
+__gpg_export_pubkey() {
+    local _seckeys _c _keyid _input _pubkey _begin _end _nodefault
+    __gpg_init || exit 1
+    _seckeys=$(__mktempfile) || exit 1
+    _pubkey=$(__mktempfile) || exit 1
+    if [ "$1" = "--no-default" ]; then
+        _nodefault=1
+    else
+        _nodefault=0
+    fi
+    gpg --list-secret-keys > $_seckeys 2>/dev/null
+    _c="$(cat $_seckeys | grep '^sec' | wc -l | awk '{ print $1 }')"
+    if [ "$_c" = "0" ]; then
+        echo "error: you don't have any gpg secret keys" >&2
+        echo "(hint: try \`gpg --gen-key\`)" >&2
+        exit 1
+    elif [ "$_c" = "1" -a $_nodefault -eq 0 ]; then
+        _keyid="$(cat $_seckeys         | \
+                  grep '^sec'           | \
+                  awk '{ print $2 }'    | \
+                  cut -f 2 -d '/')"
+    else
+        while :; do
+            _keyid="$(cat $_seckeys         | \
+                      grep '^sec'           | \
+                      head -n 1             | \
+                      awk '{ print $2 }'    | \
+                      cut -f 2 -d '/')"
+            cat $_seckeys
+            __echo_nolf "Enter key ID [$_keyid]: "
+            read _input
+            if [ ! -z "$_input" ]; then
+                _keyid=$_input
+            fi
+            _c="$(cat $_seckeys             | \
+                  grep '^sec'               | \
+                  grep "/$_keyid "          | \
+                  wc -l                     | \
+                  awk '{ print $1 }')"
+            if [ "$_c" != "1" ]; then
+                echo "error: invalid key ID" >&2
+                continue
+            fi
+            break
+        done
+    fi
+    gpg --export --armor $_keyid > $_pubkey 2>/dev/null
+    _begin="-----BEGIN PGP PUBLIC KEY BLOCK-----"
+    _end="-----END PGP PUBLIC KEY BLOCK-----"
+    if [ "$(head -n 1 $_pubkey)" != "$_begin" -o \
+         "$(tail -n 1 $_pubkey)" != "$_end" ]; then
+            echo "error: failed to export public key for $_keyid" >&2
+            exit 1
+    fi
+    cat $_pubkey > $_d/.gpg.pubkey
+    echo $_keyid > $_d/.gpg.keyid
+}
+
+__gpg_export_pubkey_with_keyid() {
+    local _keyid _pubkey _begin _end
+    _keyid=$1
+    if [ -z "$_keyid" ]; then
+        echo "error: usage: __gpg_export_pubkey_with_keyid <key id>" >&2
+        exit 1
+    fi
+    _pubkey=$(__mktempfile) || exit 1
+    gpg --options $_d/.gpg.conf --export --armor $_keyid >$_pubkey 2>/dev/null
+    _begin="-----BEGIN PGP PUBLIC KEY BLOCK-----"
+    _end="-----END PGP PUBLIC KEY BLOCK-----"
+    if [ "$(head -n 1 $_pubkey)" != "$_begin" -o \
+         "$(tail -n 1 $_pubkey)" != "$_end" ]; then
+            echo "error: failed to export public key for $_keyid" >&2
+            exit 1
+    fi
+    cat $_pubkey > $_d/.gpg.pubkey
+    echo $_keyid > $_d/.gpg.keyid
+    return 0
+}
+
+#=============================================================================
+# Project-related stuff
+#=============================================================================
+__project_name() {
+    cat $_d/.current_project 2> /dev/null
+}
+
+__is_current_project_set() {
+    local _dp _lc
+    if [ ! -f $_d/.current_project ]; then
+        return 1
+    else
+        if [ -z "$(__project_name)" ]; then
+            return 1
+        else
+            # Force a refresh if there's an old .current_project.details
+            # lying around (one with the 'project alias' in the 3rd col).
+            _dp=$_d/.current_project.details
+            if [ -f $_dp ]; then
+                _lc=$(grep -o ':' $_dp | wc -l)
+                if [ $_lc -eq 4 ]; then
+                    rm $_d/.current_project
+                    rm $_dp
+                    return 1
+                fi
+            else
+                return 0
+            fi
+        fi
+    fi
+}
+
+__project_details() {
+    cat $_d/.current_project.details 2> /dev/null | cut -f $1 -d ':'
+}
+
+__project_user_login() {
+    __project_details 2
+}
+
+__project_user_firstname() {
+    __project_details 3
+}
+
+__project_user_fullname() {
+    __project_details 4
+}
+
+__PROJECT_INITIALIZED=0
+__project_init() {
+    if [ $__PROJECT_INITIALIZED -eq 1 ]; then
+        return 0
+    fi
+    if ! __is_current_project_set; then
+        sbctl_select_project
+        if ! __is_current_project_set; then
+            return 1
+        fi
+    fi
+    __PROJECT_INITIALIZED=1
+    export __PROJECT_INITIALIZED
+
+    return 0
+}
+
+#=============================================================================
+# Main commands/programs
+#=============================================================================
+sb() {
+    local _h _x _aliases
+    _x=""
+    _h="$1"
+    if [ "$_h" = "-X" -o "$_h" = "-Y" ]; then
+        _x="$_h"
+        shift
+        _h="$1"
+    fi
+    sbctl_login -q
+    if [ -z "$_h" ]; then
+        _aliases=$(__mktempfile) || exit 1
+        (eval $(__sbctl_ssh_with_creds list-host-aliases)) > $_aliases
+        eval $(__sbctl_ssh_with_creds list-hosts) || exit 1
+        while :; do
+            __echo_nolf "Enter alias (^C to exit): "
+            read _h
+            if ! grep "$_h" "$_aliases" > /dev/null; then
+                echo ""
+                echo "Invalid alias: '$_h'."
+                continue
+            fi
+            break
+        done
+        if [ -n "$_h" ]; then
+            eval $(__sbctl_ssh_with_creds connect $_x $_h)
+            eval $(__sb_ssh_cmd $_x $_h)
+        fi
+    else
+        eval $(__sbctl_ssh_with_creds connect $_x $_h)
+        eval $(__sb_ssh_cmd $_x $_h)
+    fi
+}
+
+sbx() {
+    sb -X $*
+}
+
+sby() {
+    sb -Y $*
+}
+
+sbctl() {
+    __program_subcommand sbctl $*
+}
+
+sbsp() {
+    if [ $# -eq 1 ]; then
+        sbctl_set_project $1
+    else
+        sbctl_select_project
+    fi
+}
+
+#=============================================================================
+# Subcommands for main programs
+#=============================================================================
+__LOGGED_IN=0
+sbctl_login() {
+    if [ $__LOGGED_IN -eq 1 ]; then
+        return 0
+    fi
+    local _u _p
+    __connection_init   || exit 1
+    __project_init      || exit 1
+    _p=$(__project_name)
+    _u=$(__project_user_login)
+    eval $(__sbctl_ssh_with_creds login $1) || exit 1
+    __LOGGED_IN=1
+    export __LOGGED_IN
+}
+
+sbctl_logout() {
+    __connection_init || exit 1
+    eval $(__sbctl_ssh logout) || exit 1
+    __LOGGED_IN=0
+    export __LOGGED_IN
+}
+
+sbctl_list_hosts() {
+    __connection_init   || exit 1
+    __project_init      || exit 1
+    eval $(__sbctl_ssh_with_creds list-hosts) || exit 1
+}
+
+sbctl_list_host_aliases() {
+    __connection_init   || exit 1
+    __project_init      || exit 1
+    eval $(__sbctl_ssh_with_creds list-host-aliases) || exit 1
+}
+
+sbctl_export_gpg_pubkey() {
+    __gpg_export_pubkey $1 || exit 1
+    cat $_d/.gpg.pubkey
+}
+
+sbctl_svn_update() {
+    __svn_update
+}
+
+__GPG_INITIALIZED=0
+sbctl_init_gpg() {
+    local _basic_conf _project_conf _cmd _o _out _err _nodefault _line _msg
+    local _begin _end _pubkey _server_keyid _sbctl_keyid _sbctl_pubkey
+    local _attempt _uid _random _in _retval _outstr _errstr _decrypted
+    local _failed
+    if [ $__GPG_INITIALIZED -eq 1 ]; then
+        return 0
+    fi
+    echo "Initializing GPG..."
+    _out=$(__mktempfile) || exit 1
+    _err=$(__mktempfile) || exit 1
+    __connection_init    || exit 1
+    sbctl_login -q
+
+    if [ -f $_d/.gpg_initialized -a "$1" != "-f" -a "$1" != "--force" ]; then
+        return 0
+    fi
+
+    rm -f $_d/.gpg_initialized > /dev/null 2>&1
+
+    if [ ! -f "$(which gpg 2>/dev/null)" ]; then
+        echo "error: 'gpg' not found." >&2
+        exit 1
+    fi
+
+    __echo_nolf "Downloading basic configuration data."
+    _basic_conf=$_d/.gpg.conf
+    __dot
+    eval $(__sbctl_ssh get-basic-gpg-conf) > $_basic_conf
+    __dot
+    if [ ! -s $_basic_conf ]; then
+        echo ".failed."
+        echo "error: sbctl get-basic-gpg-conf failed" >&2
+        exit 1
+    fi
+    echo ".done."
+    chmod 600 $_basic_conf
+    chmod 700 $_d >/dev/null 2>&1
+
+    if [ "$1" = "--no-default" ]; then
+        _nodefault=1
+    else
+        _nodefault=0
+    fi
+
+    __echo_nolf "Making sure you have some secret keys in your keyring..."
+    gpg --options $_basic_conf --list-secret-keys > $_out 2>/dev/null
+    __dot
+
+    _c="$(cat $_out | grep '^sec' | wc -l | awk '{ print $1 }')"
+    __dot
+    if [ "$_c" = "0" ]; then
+        echo ".failed."
+        echo "error: you don't have any gpg secret keys" >&2
+        echo "(hint: try \`gpg --gen-key\`)" >&2
+        exit 1
+    fi
+    echo ".done."
+
+    __project_init || exit 1
+
+    __echo_nolf "Loading any previously configured key information."
+    _cmd="$(__sbctl_ssh_with_creds show-my-gpg-keyid)"
+    __dot
+    _keyid="$(eval $_cmd 2>/dev/null)"
+    echo ".done."
+    if [ -z "$_keyid" ]; then
+        echo "No previous key configuration has been uploaded to the server."
+    else
+        echo "Server has been previously configured with key $_keyid."
+        __echo_nolf "Verifying we have access to a corresponding secret key.."
+        if ! grep "/$_keyid " $_out > /dev/null; then
+            echo ".failed."
+            echo "Unable to find any key for id '$_keyid'." >&2
+            _msg="[Q]uit, or [c]ontinue (and upload a new key)? [q/c] "
+            while :; do
+                __echo_nolf "$_msg"
+                read _line
+                if [ -z "$_line" ]; then
+                    echo ""
+                    continue
+                elif [ "q" = "$_line" ]; then
+                    echo ""
+                    exit 1
+                elif [ "c" = "$_line" ]; then
+                    _keyid=""
+                    break
+                else
+                    echo ""
+                    continue
+                fi
+            done
+        else
+            echo ".done."
+        fi
+    fi
+
+    if [ -z "$_keyid" ]; then
+        if [ "$_c" = "1" -a $_nodefault -eq 0 ]; then
+            _keyid="$(cat $_out                 | \
+                      grep '^sec'               | \
+                      awk '{ print $2 }'        | \
+                      cut -f 2 -d '/')"
+        else
+            while :; do
+                _keyid="$(cat $_out             | \
+                          grep '^sec'           | \
+                          head -n 1             | \
+                          awk '{ print $2 }'    | \
+                          cut -f 2 -d '/')"
+                cat $_out
+                __echo_nolf "Enter key ID [$_keyid]: "
+                read _input
+                if [ ! -z "$_input" ]; then
+                    _keyid=$_input
+                fi
+                _c="$(cat $_out                 | \
+                      grep '^sec'               | \
+                      grep "/$_keyid "          | \
+                      wc -l                     | \
+                      awk '{ print $1 }')"
+                if [ "$_c" != "1" ]; then
+                    echo "error: invalid key ID" >&2
+                    continue
+                fi
+                break
+            done
+        fi
+        if [ -z "$_keyid" ]; then
+            echo "script error: invariant violated: '\$_keyid' empty" >&2
+            exit 1
+        fi
+        if ! __gpg_export_pubkey_with_keyid $_keyid; then
+            echo "error: failed to export gpg pubkey with id '$_keyid'" >&2
+            exit 1
+        fi
+        sbctl_login -q
+        __echo_nolf "Uploading pubkey with id '$_keyid'."
+        cat $_d/.gpg.pubkey | \
+            eval $(__sbctl_ssh_with_creds upload-gpg-pubkey $_keyid) || \
+                exit 1
+        echo "..done."
+        __echo_nolf "Sanity check that server has correct key."
+        _cmd="$(__sbctl_ssh_with_creds show-my-gpg-keyid)"
+        __dot
+        _server_keyid="$(eval $_cmd 2>/dev/null)"
+        if [ -z "$_server_keyid" ]; then
+            echo "..failed."
+            echo "No GPG key id returned from server." >&2
+            exit 1
+        elif [ "$_keyid" != "$_server_keyid" ]; then
+            echo "..failed."
+            echo "error: we uploaded pubkey with id '$_keyid', \
+                  but the server responded with key id '$_server_keyid'." >&2
+            exit 1
+        fi
+        echo ".done."
+        echo "Key uploaded and confirmed."
+    fi
+
+    __echo_nolf "Looking up server's key id."
+    _sbctl_keyid=""
+    _sbctl_keyid="$(sbctl_get_sbctl_gpg_keyid)"
+    __dot
+    if [ -z "$_sbctl_keyid" ]; then
+        echo ".failed."
+        echo "error: failed to get server's key id." >&2
+        exit 1
+    fi
+    echo ".done."
+
+    _attempt=0
+    while [ $_attempt -lt 2 ]; do
+        _attempt=$(($_attempt + 1))
+        __echo_nolf "Verifying we have server's public key for id " \
+                    "'$_sbctl_keyid' in our keychain (attempt $_attempt).."
+
+        _cmd="gpg --options $_basic_conf --list-key $_sbctl_keyid"
+        if ! eval $_cmd >$_out 2>$_err; then
+            echo ".no."
+            __echo_nolf "Downloading public key for id '$_sbctl_keyid'."
+            _sbctl_pubkey=$(__mktempfile) || exit 1
+            __dot
+            sbctl_get_sbctl_gpg_pubkey > $_sbctl_pubkey
+            __dot
+            if [ ! -s "$_sbctl_pubkey" ]; then
+                echo ".failed."
+                echo "error: failed to get sbctl public key." >&2
+                exit 1
+            fi
+            _begin="-----BEGIN PGP PUBLIC KEY BLOCK-----"
+            _end="-----END PGP PUBLIC KEY BLOCK-----"
+            if [ "$(head -n 1 $_sbctl_pubkey)" != "$_begin" -o \
+                 "$(tail -n 1 $_sbctl_pubkey)" != "$_end" ]; then
+                    echo ".failed."
+                    echo "error: did not receive valid public " \
+                         "key from server.">&2
+                    exit 1
+            fi
+            echo ".done."
+            echo "Importing server's public key for id '$_sbctl_keyid'.."
+            _cmd="gpg --options $_basic_conf --import $_sbctl_pubkey"
+            if ! eval $_cmd >$_out 2>$_err; then
+                echo ".failed."
+                echo "$_cmd failed:" >&2
+                cat $_err >&2
+                exit 1
+            fi
+            echo "Restarting verification..."
+            continue
+        fi
+        echo ".yes."
+        __echo_nolf "Verifying uid.."
+        _uid='sbctl <sbctl@snakebite.net>'
+        if ! cat $_out | grep '^uid' | grep "${_uid}$" > /dev/null; then
+            echo ".failed."
+            echo "error: uid mismatch for sbctl pubkey" >&2
+            echo "no match for uid '$_uid' in output:"
+            cat $_out
+            exit 1
+        fi
+        echo ".done."
+        break
+    done
+
+    __echo_nolf "Downloading project configuration data."
+    _project_conf=$_d/.gpg.$(__project_name).conf
+    __dot
+    eval $(__sbctl_ssh_with_creds get-project-gpg-conf) > $_project_conf
+    __dot
+    if [ ! -s $_project_conf ]; then
+        echo ".failed."
+        echo "error: sbctl get-project-gpg-conf failed" >&2
+        exit 1
+    fi
+    echo ".done."
+    chmod 600 $_project_conf
+
+    _in=$(__mktempfile) || exit 1
+    __echo_nolf "Verifying server can decrypt our encrypted messages."
+    _random="$(__random)"
+    _cmd="gpg --options $_project_conf --armor -e --yes --output $_in"
+    __dot
+    if ! echo $_random | eval $_cmd >$_out 2>$_err; then
+        echo ".failed."
+        echo "$_cmd failed:" >&2
+        cat $_err >&2
+        exit 1
+    fi
+
+    _cmd="$(__sbctl_ssh_with_creds gpg-decryption-test)"
+    __dot
+    cat $_in | eval $_cmd > $_out 2> $_err
+    __dot
+    _retval=$?
+    _outstr=$(cat $_out)
+    _errstr=$(cat $_err)
+    if [ "$_outstr" != "$_random" ]; then
+        echo ".failed."
+        echo "error: sent encrypted string '$_random', " \
+             "got back '$_outstr'" >&2
+
+        if [ -n "$_errstr" ]; then
+            echo "additionally: received unexpected stderr output:"
+            cat $_err
+        fi
+        echo "(command: '$_cmd' [$_retval])"
+        exit 1
+    fi
+    __dot
+
+    if [ -n "$_errstr" ]; then
+        echo ".failed."
+        echo "error: received unexpected stderr:"
+        cat $_err
+        echo "(command: '$_cmd' [$_retval])"
+        exit 1
+    fi
+    echo ".done."
+
+    __echo_nolf "Verifying we can decrypt messages encrypted by the server."
+    __dot
+    _cmd="$(__sbctl_ssh_with_creds gpg-encryption-test)"
+    __dot
+
+    if ! eval $_cmd > $_out 2> $_err; then
+        echo ".failed."
+        echo "error: sbctl gpg-encryption-test failed:" >&2
+        cat $_err >&2
+        exit 1
+    fi
+
+    _decrypted=""
+    _decrypted="$(cat $_out                     | \
+                  gpg --options $_project_conf    \
+                      --quiet --batch --decrypt)"
+
+    if [ "$_decrypted" != "foo" ]; then
+        echo ".failed."
+        echo "error: expected 'foo', got: '$_decrypted'" >&2
+        exit 1
+    fi
+    echo ".done."
+
+    echo "Finished initializing GPG."
+    LC_ALL=C svn info $_d | grep '^Rev' | \
+        awk '{ print $2 }' > $_d/.gpg_initialized
+    __GPG_INITIALIZED=1
+    export __GPG_INITIALIZED
+}
+__gpg_init() {
+    sbctl_init_gpg
+}
+
+sbctl_upload_gpg_pubkey() {
+    local _pubkey _keyid
+    __connection_init   || exit 1
+    __project_init      || exit 1
+
+    __gpg_export_pubkey $1 || exit 1
+    _pubkey=$(cat $_d/.gpg.pubkey)
+    _keyid=$(cat $_d/.gpg.keyid)
+    if [ -z "$_pubkey" ]; then
+        echo "error: invalid pubkey: $_d/.gpg.pubkey" >&2
+        exit 1
+    fi
+    if [ -z "$_keyid" ]; then
+        echo "error: invalid keyid: $_d/.gpg.keyid" >&2
+        exit 1
+    fi
+    sbctl_login -q
+    cat $_d/.gpg.pubkey | \
+        eval $(__sbctl_ssh_with_creds upload-gpg-pubkey $_keyid) || exit 1
+}
+
+sbctl_show_my_gpg_keyid() {
+    eval $(__sbctl_ssh_with_creds show-my-gpg-keyid)
+}
+
+sbctl_get_sbctl_gpg_keyid() {
+    if [ ! -f $_d/.gpg.sbctl.keyid ]; then
+        eval $(__sbctl_ssh get-sbctl-gpg-keyid) > $_d/.gpg.sbctl.keyid
+    fi
+    cat $_d/.gpg.sbctl.keyid
+}
+
+sbctl_get_gpg_conf() {
+    if [ ! -s $_d/.gpg.conf ]; then
+        eval $(__sbctl_ssh_with_creds get-gpg-conf) > $_d/.gpg.conf
+    fi
+    cat $_d/.gpg.conf
+}
+
+sbctl_get_sbctl_gpg_pubkey() {
+    eval $(__sbctl_ssh get-sbctl-gpg-pubkey)
+}
+
+sbctl_delete_gpg_info() {
+    __connection_init   || exit 1
+    __project_init      || exit 1
+    eval $(__sbctl_ssh_with_creds delete-gpg-info)
+}
+
+sbctl_cat_gpg_encrypted_file() {
+    if [ -z "$1" ]; then
+        echo "usage: sbctl cat-gpg-encrypted-file <filename>" >&2
+        exit 1
+    fi
+    __connection_init   || exit 1
+    __project_init      || exit 1
+    eval $(__sbctl_ssh_with_creds cat-gpg-encrypted-file $1)
+}
+
+sbctl_decrypt_secret() {
+    local _cmd _out _err _project_conf _secret _keyid
+    if [ -z "$1" ]; then
+        echo "usage: sbctl decrypt-secret <filename>" >&2
+        exit 1
+    else
+        _secret="$_d/$1.asc"
+    fi
+    __connection_init    || exit 1
+    __project_init       || exit 1
+    __gpg_init           || exit 1
+
+    _out=$(__mktempfile) || exit 1
+    _err=$(__mktempfile) || exit 1
+
+    _project_conf=$_d/.gpg.$(__project_name).conf
+
+    __echo_nolf "Downloading GPG-encrypted file '$1' to '$1.asc'..."
+    _cmd="$(__sbctl_ssh_with_creds cat-gpg-encrypted-file $1)"
+
+    if ! eval $_cmd > $_out 2> $_err; then
+        echo ".failed."
+        echo "error: sbctl cat-gpg-encrypted-file $1 failed:" >&2
+        cat $_err
+        exit 1
+    fi
+    __dot
+    echo ".done."
+    cat $_out > $_secret
+
+    _keyid="$(cat $_d/.gpg.keyid)"
+    __echo_nolf "Attempting to decrypt $1.asc using GPG key $_keyid.."
+
+    _cmd="gpg --options $_project_conf --quiet --batch --decrypt"
+    _cmd="$_cmd --default-key $_keyid $_secret"
+    if ! eval $_cmd > $_out 2> $_err; then
+        echo ".failed." >&2
+        echo "error: \`$_cmd\` failed:" >&2
+        cat $_err >&2
+        exit 1
+    fi
+    __dot
+    echo ".done."
+
+    echo "Decrypted text:"
+    cat $_out
+    rm -f $_out > /dev/null 2>&1
+
+    exit 0
+}
+
+sbctl_pssst() {
+    sbctl_decrypt_secret $*
+}
+
+sbctl_decrypt() {
+    sbctl_decrypt_secret $*
+}
+
+sbctl_import_sbctl_gpg_pubkey() {
+    local _c _f _out _err _info _expected_keyid _actual_keyid
+    _f=$(__mktempfile) || exit 1
+    _out=$(__mktempfile) || exit 1
+    _err=$(__mktempfile) || exit 1
+    _info=$(__mktempfile) || exit 1
+    sbctl_get_sbctl_gpg_pubkey > $_f || exit 1
+    _expected_keyid="$(sbctl_get_sbctl_gpg_keyid)"
+
+    if [ ! -s $_f ]; then
+        echo "error: failed to get sbctl gpg public key" >&2
+        exit 1
+    fi
+    gpg $_f >$_info 2>/dev/null
+    _c="$(cat $_info | grep '^pub' | wc -l | awk '{ print $1 }')"
+    if [ "$_c" != "1" ]; then
+        echo "error: download contained multiple ($_c) public keys (???)" >&2
+        exit 1
+    fi
+
+    _actual_keyid="$(cat $_info  | \
+                     grep '^pub'        | \
+                     awk '{ print $2 }' | \
+                     cut -f 2 -d '/')"
+    if [ "$_expected_keyid" != "$_actual_keyid" ]; then
+        echo "error: key mismatch" >&2
+        echo "(expected: $_expected_keyid, got: $_actual_keyid)" >&2
+        exit 1
+    fi
+
+    if ! gpg --import $_f >$_out 2>$_err; then
+        echo "error: failed to import sbctl gpg pubkey" >&2
+        echo "gpg --import $_f failed:" >&2
+        cat $_err >&2
+        exit 1
+    fi
+
+    echo "Successfully imported GPG public key for sbctl."
+    return 0
+}
+
+sbctl_list_projects() {
+    eval $(__sbctl_ssh list-projects) || exit 1
+}
+
+sbctl_get_project_count() {
+    eval $(__sbctl_ssh get-project-count) || exit 1
+}
+
+sbctl_get_project_details() {
+    eval $(__sbctl_ssh get-project-details $1 $2) || exit 1
+}
+
+sbctl_get_username_for_project() {
+    eval $(__sbctl_ssh get-username-for-project $1) || exit 1
+}
+
+sbctl_sbctl_ssh_cmd() {
+    echo "$(__sbctl_ssh_cmd) $*"
+}
+
+sbctl_sb_ssh_cmd() {
+    echo "$(__sb_ssh_cmd) $*"
+}
+
+sbctl_svn_cmd() {
+    echo "$(__svn_cmd) $*"
+}
+
+sbctl_try_switch_to_https() {
+    __svn_switch_to_https || exit 1
+}
+
+sbctl_select_project() {
+    local _p _c _line _projects
+    _projects=$(__mktempfile) || exit 1
+    __echo_nolf "Getting a list of your projects..."
+    sbctl_list_projects > $_projects
+    echo "done."
+    _c=$(wc -l $_projects | awk '{ print $1 }')
+    if [ $_c -gt 1 ]; then
+        echo "You are configured for $_c projects: "
+        cat $_projects | __indent
+        while :; do
+            __echo_nolf "Enter a project name:  "
+            read _line
+            if [ -z "$_line" ]; then
+                echo ""
+                continue
+            else
+                if ! grep "$_line" $_projects > /dev/null; then
+                    echo ""
+                    echo "Invalid entry: '$_line'."
+                    continue
+                else
+                    echo ""
+                    _p=$_line
+                    break
+                fi
+            fi
+        done
+    else
+        _p=$(cat $_projects)
+    fi
+
+    sbctl_set_project $_p
+}
+
+sbctl_set_project() {
+    local _p _u _details
+    _p=$1
+    _details=$(__mktempfile) || exit 1
+
+    __echo_nolf "Looking up your username for project '$_p'..."
+    _u=$(sbctl_get_username_for_project $_p)
+    echo "done."
+    __echo_nolf "Getting project details for '$_u@$_p'..."
+    sbctl_get_project_details $_p $_u > $_details
+    if [ ! -s "$_details" ]; then
+        echo ""
+        echo "error: failed to get project details for '$_u@$_p'."
+        exit 1
+    fi
+
+    echo "done."
+
+    __echo_nolf "Setting current project to '$_p'."
+    echo $_p > $_d/.current_project
+    __echo_nolf '.'
+    cat $_details > $_d/.current_project.details
+    echo ".done."
+
+    echo "$(__project_user_firstname), you're now configured for $_p.  Enjoy!"
+}
+
+sbctl_print_current_project() {
+    echo "Project Name:     $(__project_name)"
+    echo ""
+    echo "User Login:       $(__project_user_login)"
+    echo "User First Name:  $(__project_user_firstname)"
+    echo "User Full Name:   $(__project_user_fullname)"
+    echo ""
+}
+
+sbctl_print_current_project_short() {
+    echo "$(__project_user_login)@$(__project_name)"
+}
+
+sbctl_hard_reset() {
+    local _l _f _c _bn _dn _edn _p
+
+    _edn=$(dirname $_subr)
+    for _f in $(find $_d -type f -name ".*"); do
+        _bn=$(basename $_f)
+        _dn=$(dirname $_f)
+        if [ "$_dn" != "$_edn" ]; then
+            continue
+        fi
+        if ! cat $_subr | grep "\$_d/$_bn" > /dev/null; then
+            echo "Skipping unrecognized dotfile '$_bn'."
+            continue
+        fi
+
+        rm $_f
+        if [ -f $_f ]; then
+            echo "Failed to remove dotfile '$_f'."
+        else
+            echo "Removed dotfile '$_bn'."
+        fi
+    done
+
+    __list_symlinks_to_subr | while read _l; do
+        _bn=$(basename $_l)
+        rm $_l
+        if [ -L $_l ]; then
+            echo "Failed to remove symlink '$_bn'."
+        else
+            echo "Removed symlink '$_bn'."
+        fi
+    done
+
+    _p="-rw-r--r--"
+    chmod 644 $_subr
+    if [ "$(__get_perms $_subr)" != "-rw-r--r--" ]; then
+        echo "Failed to reset permissions of '$_subr_name'."
+    else
+        echo "Reset permissions of '$_subr_name'."
+    fi
+
+    echo "Hard reset complete."
+    echo "Re-initializing via 'sh $_subr_name'..."
+    (sh $_subr); exit $?
+}
+
+sbctl_connection_test() {
+    local _c _m _ts _i _e _rv
+    local __err __out __stdout __stdin __stderr __retval __cmd
+
+    _ts=$(__timestamp)
+    if [ -z "$_ts" ]; then
+        echo "error: unable to generate timestamp for connection test."
+        exit 1
+    fi
+
+    _m='onnection test $_i (out of $_c total) failed.'
+    _c=$(cat $_subr | grep "C${_m}" | wc -l | awk '{ print $1 }')
+
+    __stdin=$(__mktempfile) || exit 1
+    __stdout=$(__mktempfile) || exit 1
+    __stderr=$(__mktempfile) || exit 1
+
+    __echo_nolf "Testing connection"
+
+    __retval=""
+    __cmd=$(__sbctl_ssh connection-test-quick)
+    eval $__cmd > $__stdout 2> $__stderr
+    __retval=$?
+    __out=$(cat $__stdout)
+    __err=$(cat $__stderr)
+
+    _i=1
+    _e="ok"
+    if [ "$_e" != "$__out" -o ! -z "$__err" -o $__retval -ne 0 ]; then
+        echo "... failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected string '$_e', got: '$__out'"
+        echo "Expected successful return code (0) from ssh, got: '$__retval'."
+        if [ -n "$__err" ]; then
+            echo "The following error message was returned by ssh:"
+            cat $__stderr
+        else
+            echo "No error message was generated by ssh."
+        fi
+        echo "(Command: '$__cmd' [$__retval])"
+        echo ""
+        echo "If the error is public key related, you need to make sure the "
+        echo "correct identity has been registered with ssh-agent.  Unless "
+        echo "told otherwise, Snakebite expects you to use the same ssh key "
+        echo "you use to commit to your project's SCM repository."
+        echo ""
+        echo "If you don't use ssh-agent, ssh will default to using either "
+        echo "~/.ssh/id_dsa or ~/.ssh/id_rsa.  If neither of these files "
+        echo "exist, or your project SCM key is in a different file, you "
+        echo "will need to manually edit ~/.snakebite/ssh_config_ext and "
+        echo "place the following lines at the top of the file:"
+        echo ""
+        echo "    IdentityFile ~/.ssh/id_my_key_for_foo_project"
+        echo "    IdentitiesOnly yes"
+        echo ""
+        echo "(If you need to do this, I'm interested to hear why, drop "
+        echo " me an e-mail at trent@snakebite.org.  I don't expect it "
+        echo " to be a common use case (given the usefulness of ssh-agent).)"
+        echo ""
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    echo "" > $__stdout
+    echo "" > $__stderr
+    __out=""
+    __err=""
+    __retval=""
+    __cmd=$(__sbctl_ssh connection-test-out)
+    eval $__cmd > $__stdout 2> $__stderr
+    __retval=$?
+    __out=$(cat $__stdout)
+    __err=$(cat $__stderr)
+
+    _e="1234"
+    if ! grep "^$_e$" $__stderr > /dev/null; then
+        echo "... failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected string '$_e' on stderr, got: '$__err'"
+        echo "Expected successful return code (0) from ssh, got: '$__retval'."
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    _e="abcd"
+    if ! grep "^$_e$" $__stdout > /dev/null; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected string '$_e', got: '$__out'"
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    if [ $__retval -ne 0 ]; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected successful return code (0) from ssh, got: '$__retval'."
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    echo "" > $__stdout
+    echo "" > $__stderr
+    __out=""
+    __err=""
+    __retval=""
+    __cmd=$(__sbctl_ssh connection-test-in)
+    echo $_ts > $__stdin
+    cat $__stdin | eval $__cmd > $__stdout 2> $__stderr
+    __retval=$?
+    __out=$(cat $__stdout)
+    __err=$(cat $__stderr)
+    if [ "$__out" != "$_ts" ]; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Sent string '$_ts', expected '$_ts' back, got: '$__out'"
+        if [ -n "$__err" ]; then
+            echo "Additionally, received unexpected stderr output:"
+            cat $__stderr
+        fi
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    if [ -n "$__err" ]; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Sent string '$_ts', got same string back (as expected)."
+        echo "However, received unexpected output on stderr:"
+        cat $__stderr
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    echo "" > $__stdout
+    echo "" > $__stderr
+    __out=""
+    __err=""
+    __retval=""
+    __cmd=$(__sbctl_ssh connection-test-error)
+    eval $__cmd > $__stdout 2> $__stderr
+    __retval=$?
+    __out=$(cat $__stdout)
+    __err=$(cat $__stderr)
+
+    _e="1234"
+    if ! grep "^$_e$" $__stderr > /dev/null; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected string '$_e' on stderr, got: '$__err'"
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    _e="abcd"
+    if ! grep "^$_e$" $__stdout > /dev/null; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected string '$_e', got: '$__out'"
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    __echo_nolf '.'
+
+    if [ $__retval -ne 1 ]; then
+        echo " failed."
+        echo "Connection test $_i (out of $_c total) failed."
+        echo "Expected failure return code (1) from ssh, got: '$__retval'."
+        echo "(Command: '$__cmd' [$__retval])"
+        exit 1
+    fi
+    _i=$(( $_i + 1 ))
+    echo '.done.'
+
+
+    echo "$__rev" > $_d/.connection_tested
+    return 0
+}
+
+
+#=============================================================================
+# Main exec
+#=============================================================================
+if [ "$_name" = "$_subr_name" ]; then
+    if [ "$1" = "relaunch" ]; then
+        shift
+        _name=$1
+        shift
+    fi
+fi
+
+if [ "$_name" = "$_subr_name" ]; then
+    # Default to 'sb' if, for some reason, someone tries to execute
+    # snakebite.subr directly.
+    if [ $# -eq 0 ]; then
+        _name=sb
+    else
+        _name=$1
+        shift
+    fi
+fi
+
+if ! __is_valid_program $_name; then
+    exit 1
+else
+    (eval $_name $*); exit $?
+fi
+
+# vim:set ts=8 sw=4 sts=4 tw=78 et syntax=sh:
